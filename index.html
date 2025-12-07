@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Operator Blueprints – Payback Calculator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo-dot"></div>
+      <div class="topbar-title-group">
+        <h1>Operator Blueprints</h1>
+        <p class="topbar-subtitle">Payback Calculator Tool</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge">Style A · Minimalist Operator Dashboard</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- INPUTS PANEL -->
+    <section class="panel panel-inputs">
+      <h2>Assumptions</h2>
+      <p class="panel-subtitle">
+        Model how many periods it takes to recover CAC from gross-margin contribution.
+      </p>
+
+      <form
+        id="payback-form"
+        class="form-grid"
+        onsubmit="event.preventDefault(); runPayback();"
+      >
+        <!-- Time + horizon -->
+        <div class="form-field">
+          <label for="timeUnit">Time Unit</label>
+          <select
+            id="timeUnit"
+            class="select-input"
+            onchange="syncHorizonLabel(document.getElementById('horizon').value)"
+          >
+            <option value="month" selected>Months</option>
+            <option value="week">Weeks</option>
+            <option value="year">Years</option>
+          </select>
+          <p class="field-hint">
+            Period for your payback curve (e.g., monthly payback).
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="horizon">Number of Periods</label>
+          <div class="range-row">
+            <input
+              type="range"
+              id="horizon"
+              min="3"
+              max="60"
+              value="24"
+              oninput="syncHorizonLabel(this.value)"
+            />
+            <span id="horizonLabel">24 months</span>
+          </div>
+          <p class="field-hint">
+            How far out you want to track payback and net contribution.
+          </p>
+        </div>
+
+        <!-- CAC + unit economics -->
+        <div class="form-field">
+          <label for="cac">CAC per Customer</label>
+          <div class="input-prefix">
+            <span class="prefix">$</span>
+            <input
+              type="number"
+              id="cac"
+              min="0"
+              step="1"
+              value="80"
+            />
+          </div>
+          <p class="field-hint">
+            Total cost to acquire one customer (all acquisition costs).
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="aov">Average Order Value (AOV)</label>
+          <div class="input-prefix">
+            <span class="prefix">$</span>
+            <input
+              type="number"
+              id="aov"
+              min="0"
+              step="1"
+              value="70"
+            />
+          </div>
+          <p class="field-hint">
+            Average order size for this product or customer.
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="ordersPerPeriod">Orders per Customer per Period</label>
+          <input
+            type="number"
+            id="ordersPerPeriod"
+            min="0"
+            step="0.1"
+            value="1"
+          />
+          <p class="field-hint">
+            How many orders the average active customer places each period.
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="grossMargin">Gross Margin %</label>
+          <input
+            type="number"
+            id="grossMargin"
+            min="0"
+            max="100"
+            step="0.5"
+            value="65"
+          />
+          <p class="field-hint">
+            Gross margin percentage on revenue (after COGS, before marketing).
+          </p>
+        </div>
+
+        <!-- Retention & discount -->
+        <div class="form-divider"></div>
+        <h3 class="section-subheading">Retention · Discount Rate</h3>
+
+        <div class="form-field">
+          <label for="churnRate">Churn Rate per Period</label>
+          <input
+            type="number"
+            id="churnRate"
+            min="0"
+            max="100"
+            step="0.1"
+            value="8"
+          />
+          <p class="field-hint">
+            Percentage of remaining customers who churn each period.
+          </p>
+        </div>
+
+        <div class="form-field">
+          <label for="discountRate">Discount Rate per Period (Optional)</label>
+          <div class="input-suffix">
+            <input
+              type="number"
+              id="discountRate"
+              min="0"
+              max="100"
+              step="0.1"
+              placeholder="0"
+            />
+            <span class="suffix">%</span>
+          </div>
+          <p class="field-hint">
+            Used to discount future gross margin when calculating payback.
+          </p>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions">
+          <button
+            type="button"
+            class="btn-secondary"
+            onclick="resetPaybackInputs()"
+          >
+            Reset Inputs
+          </button>
+          <button type="submit" class="btn-primary">
+            Run Payback
+          </button>
+        </div>
+      </form>
+
+      <div class="assumption-note">
+        <h3>How this payback model works</h3>
+        <p>
+          Starting from a CAC per customer, we calculate gross-margin contribution each period
+          based on AOV, order frequency, churn, and optional discounting. Cumulative gross
+          margin is compared against CAC to find payback and net contribution after payback.
+        </p>
+      </div>
+    </section>
+
+    <!-- OUTPUT PANEL -->
+    <section class="panel panel-output">
+      <h2>Payback Output</h2>
+      <p class="panel-subtitle">
+        Payback period, net contribution, and a visual payback curve.
+      </p>
+
+      <!-- KPI STRIP -->
+      <div class="kpi-strip">
+        <div class="kpi-card">
+          <p class="kpi-label">Payback Period</p>
+          <p class="kpi-value" id="paybackPeriodValue">–</p>
+          <p class="kpi-tag" id="paybackPeriodTag">
+            Period when cumulative margin first exceeds CAC.
+          </p>
+        </div>
+        <div class="kpi-card">
+          <p class="kpi-label">Cumulative Margin at Horizon</p>
+          <p class="kpi-value" id="cumMarginValue">–</p>
+          <p class="kpi-tag">
+            Total discounted gross margin per customer.
+          </p>
+        </div>
+        <div class="kpi-card">
+          <p class="kpi-label">Net vs CAC at Horizon</p>
+          <p class="kpi-value" id="netVsCACValue">–</p>
+          <p class="kpi-tag" id="netVsCACTag">
+            Cumulative margin minus CAC.
+          </p>
+        </div>
+        <div class="kpi-card">
+          <p class="kpi-label">Gross Margin per Period (P1)</p>
+          <p class="kpi-value" id="gmPerPeriodValue">–</p>
+          <p class="kpi-tag">
+            First-period gross margin per active customer.
+          </p>
+        </div>
+      </div>
+
+      <!-- OUTPUT ACTIONS -->
+      <div class="output-actions">
+        <button
+          type="button"
+          class="btn-secondary"
+          onclick="downloadPaybackCsv()"
+        >
+          Download CSV
+        </button>
+      </div>
+
+      <!-- CHART -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>Payback Curve</h3>
+          <p>
+            Cumulative discounted gross margin vs CAC across your modeled horizon.
+          </p>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="paybackChart"></canvas>
+        </div>
+      </div>
+
+      <!-- TEXTUAL SUMMARY -->
+      <div class="summary-card">
+        <h3>Scenario Summary</h3>
+        <ul id="summaryList" class="summary-list">
+          <li>Run the payback model to populate your summary.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Operator Blueprints · Payback Calculator</span>
+    <span>Speed is the moat · Precision is the standard</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
